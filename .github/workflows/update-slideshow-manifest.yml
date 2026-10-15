@@ -1,41 +1,45 @@
-name: Update slideshow manifest
+name: Update slideshow
 
+# Runs whenever a picture is added, changed or deleted in images/slideshow/,
+# and can also be started by hand from the Actions tab.
 on:
   push:
-    branches: [main]
+    paths:
+      - "images/slideshow/**"
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: update-slideshow-manifest-main
+  group: update-slideshow
   cancel-in-progress: false
 
 jobs:
-  update-manifest:
-    runs-on: ubuntu-latest
+  slideshow:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Check out main
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          fetch-depth: 0
+          python-version: "3.12"
 
-      - name: Generate slideshow manifest
-        run: node scripts/generate-slideshow-manifest.js
+      - name: Install Pillow
+        run: pip install "pillow>=10,<13"
 
-      - name: Run tests
-        run: node --test
+      - name: Build slideshow list and shrink large pictures
+        run: python scripts/build_slides.py
 
-      - name: Commit updated manifest
-        shell: bash
+      - name: Commit changes
         run: |
-          if git diff --quiet -- js/slideshow-manifest.js; then
-            echo "Slideshow manifest is already current."
-            exit 0
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- js/slideshow-manifest.js
-          git commit -m "chore: update slideshow manifest"
-          git push origin HEAD:main
+          git add -A data/slides.json images/slideshow images/slideshow-sizes
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "Update slideshow list"
+            git pull --rebase
+            git push
+          fi
